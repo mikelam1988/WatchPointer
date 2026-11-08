@@ -47,7 +47,8 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     private var input: CBCharacteristic?
     private var output: CBCharacteristic?
     private var infoTimer: Timer?
-    private var pendingScroll = 0.0 // Crown turn not sent yet, in pixels
+    private var motionTimer: Timer?
+    private var pendingMotion = PendingMotion()
 
     override init() {
         super.init()
@@ -56,6 +57,7 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     }
 
     func togglePause() {
+        pendingMotion.clear()
         paused.toggle()
         send(.pause, paused ? 1 : 0)
     }
@@ -63,8 +65,8 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     /// Relative movement in sixteenths of a screen point.
     func move(dx: Double, dy: Double) {
         guard !paused else { return }
-        send(.move, Int16(clamping: Int((dx * 16).rounded())),
-             Int16(clamping: Int((dy * 16).rounded())))
+        guard connected else { return }
+        pendingMotion.add(dx: dx, dy: dy, now: ProcessInfo.processInfo.systemUptime)
     }
 
     /// Tells the Mac which watch this is when connecting.
@@ -87,17 +89,41 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     }
 
     func scroll(by pixels: Double) {
-        guard !paused else { return }
-        pendingScroll += pixels
-        let whole = Int16(clamping: Int(pendingScroll))
-        guard whole != 0 else { return }
-        pendingScroll -= Double(whole)
-        send(.scroll, whole)
+        guard connected, !paused else { return }
+        pendingMotion.add(scroll: pixels, now: ProcessInfo.processInfo.systemUptime)
+    }
+
+    /// One aggregate per display interval, never a backlog of touch events.
+    private func flushMotion() {
+        guard let mac, let input, !paused else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        pendingMotion.expire(now: now)
+        guard mac.canSendWriteWithoutResponse else { return }
+        if let packet = pendingMotion.takeMove(now: now) {
+            writeFast(.move, packet.0, packet.1, mac: mac, input: input)
+        }
+        if mac.canSendWriteWithoutResponse, let scroll = pendingMotion.takeScroll(now: now) {
+            writeFast(.scroll, scroll, 0, mac: mac, input: input)
+        }
+    }
+
+    private func writeFast(_ kind: Kind, _ a: Int16, _ b: Int16, mac: CBPeripheral, input: CBCharacteristic) {
+        let bytes = [kind.rawValue, UInt8(truncatingIfNeeded: a), UInt8(truncatingIfNeeded: a >> 8),
+                     UInt8(truncatingIfNeeded: b), UInt8(truncatingIfNeeded: b >> 8)]
+        mac.writeValue(Data(bytes), for: input, type: .withoutResponse)
     }
 
     func send(_ kind: Kind, _ a: Int16 = 0, _ b: Int16 = 0, at time: TimeInterval? = nil) {
         guard let mac, let input else { return }
         if paused && kind != .pause && kind != .heartbeat && kind != .drag { return }
+        if kind == .heartbeat {
+            guard mac.canSendWriteWithoutResponse else { return }
+            writeFast(kind, a, b, mac: mac, input: input)
+            return
+        }
+        // Deliver current movement before button transitions; discard any blocked remainder.
+        flushMotion()
+        pendingMotion.clear()
         var bytes = [kind.rawValue,
                      UInt8(truncatingIfNeeded: a), UInt8(truncatingIfNeeded: a >> 8),
                      UInt8(truncatingIfNeeded: b), UInt8(truncatingIfNeeded: b >> 8)]
@@ -105,7 +131,7 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
             let ms = UInt16(truncatingIfNeeded: Int64(time * 1000))
             bytes += [UInt8(truncatingIfNeeded: ms), UInt8(truncatingIfNeeded: ms >> 8)]
         }
-        // Clicks must not be dropped; aim samples can be.
+        // Only infrequent button transitions use acknowledged writes.
         mac.writeValue(Data(bytes), for: input, type: kind == .aim ? .withoutResponse : .withResponse)
     }
 
@@ -188,6 +214,10 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
         connected = input != nil
         send(.heartbeat)
         sendInfo()
+        motionTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.flushMotion() }
+        RunLoop.main.add(timer, forMode: .common)
+        motionTimer = timer
         infoTimer?.invalidate()
         infoTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.send(.heartbeat) }
     }
@@ -198,7 +228,9 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
         output = nil
         connected = false
         paused = false
-        pendingScroll = 0
+        pendingMotion.clear()
+        motionTimer?.invalidate()
+        motionTimer = nil
         infoTimer?.invalidate()
         start()
     }

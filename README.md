@@ -72,7 +72,7 @@ On the iPhone's Watch app, turn off **Passcode › Wrist Detection**, or the wat
 - The Watch sends relative touch deltas using packet kind 8: `[kind, Int16 LE dx, Int16 LE dy]`, in sixteenths of a touch point. Positive x is right, positive y is down.
 - The Mac applies these deltas to the current cursor position. It retains legacy aim support for older Watch builds.
 - Kind 9 is a heartbeat every 0.5 seconds. The Mac releases a held mouse button after two seconds without a heartbeat or movement, and on Bluetooth disconnect.
-- Click, drag, scroll, pause and info packets retain their existing kinds. Touch input uses writes with response to preserve relative deltas and ordering.
+- Click, drag, scroll, pause and info packets retain their existing kinds. Touch input is coalesced at 30 Hz and uses writes without response, respecting Bluetooth backpressure. Pending movement expires after 100 ms instead of being replayed late; under congestion, some distance may be lost. Only button transitions use acknowledged writes.
 - CoreMotion is not used by the Watch app on this branch.
 
 ## Security note

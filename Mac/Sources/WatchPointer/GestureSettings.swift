@@ -60,7 +60,7 @@ final class GestureSettingsController: NSWindowController, NSWindowDelegate {
     static let shared = GestureSettingsController()
     private let model = GestureSettingsModel()
     private init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 440),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 660),
                               styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "WatchPointer 设置"
         window.isReleasedWhenClosed = false
@@ -72,6 +72,7 @@ final class GestureSettingsController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("Not supported") }
     func open() {
         model.reload()
+        LoginStartup.shared.refresh()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
@@ -81,6 +82,8 @@ final class GestureSettingsController: NSWindowController, NSWindowDelegate {
 
 private struct GestureSettingsView: View {
     @ObservedObject var model: GestureSettingsModel
+    @ObservedObject private var appearance = ReceiverAppearance.shared
+    @ObservedObject private var startup = LoginStartup.shared
     private let labels = ["双指轻点", "双指左滑", "双指右滑", "双指上滑", "双指下滑"]
     private let actions = [("rightClick", "右键点击"), ("leftClick", "左键点击"),
                            ("nextDesktop", "下一桌面"), ("previousDesktop", "上一桌面"),
@@ -89,6 +92,18 @@ private struct GestureSettingsView: View {
     @State private var confirmRestore = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            Text("接收器显示").font(.title2.bold())
+            Toggle("显示菜单栏图标", isOn: Binding(
+                get: { appearance.visibility.menuBar }, set: { appearance.setMenuBar($0) }))
+            Toggle("显示刘海面板效果", isOn: Binding(
+                get: { appearance.visibility.notch }, set: { appearance.setNotch($0) }))
+            Text("立即生效并记住选择。至少保留一个入口；关闭最后一个入口时会自动开启另一个。")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("登录 Mac 后自动启动", isOn: Binding(
+                get: { startup.enabled }, set: { startup.setEnabled($0) }))
+            Text(startup.message.isEmpty ? "使用当前接收器位置。移动文件后请重新勾选。" : startup.message)
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
             Text("手势与操作").font(.title2.bold())
             Text("按你的习惯设置手表手势，无需重新安装手表 App。")
                 .foregroundStyle(.secondary)

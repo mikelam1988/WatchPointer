@@ -122,3 +122,9 @@ Custom shortcut example (Control–Down for App Exposé):
 Checks: compile each file in `Tests/` with its matching implementation (`TouchInterpreter.swift`, `PendingMotion.swift`, or `GestureMappings.swift`) using `swiftc` and run the result.
 
 Existing `threeFingerLeft/Right/Up/Down` configuration keys remain readable and migrate to `twoFingerLeft/Right/Up/Down` when saved from Settings.
+
+## Receiver display and login settings
+
+Settings includes **显示菜单栏图标** (menu bar icon), **显示刘海面板效果** (notch panel), and **登录 Mac 后自动启动** (start at login). Display changes take effect immediately and persist. At least one settings entry point is preserved: disabling the last visible entry enables the other one. The menu bar menu offers Settings and Quit.
+
+Start at login is off unless enabled. It writes a per-user LaunchAgent at `~/Library/LaunchAgents/io.loopbreak.watchpointer.receiver.plist`, using the current executable path, and takes effect on the next graphical login. It does not launch another receiver immediately or require administrator access. Disabling removes the file without stopping this session. If you move the receiver executable, re-enable this option from its new location. Logs go to `~/Library/Logs/WatchPointer/`. The receiver must have the usual Bluetooth and Accessibility permissions.

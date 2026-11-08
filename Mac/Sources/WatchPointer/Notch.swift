@@ -236,7 +236,7 @@ final class NotchController {
     private let panel: NSPanel
     private var hoverTimer: Timer?
 
-    init(live: Live) {
+    init(live: Live, visible: Bool = true) {
         self.live = live
         screen = NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens[0]
         metrics = .of(screen)
@@ -255,9 +255,19 @@ final class NotchController {
         let host = ClickThroughHost(rootView: NotchView(live: live, metrics: metrics))
         host.sizingOptions = []
         panel.contentView = host
-        panel.orderFrontRegardless()
+        setVisible(visible)
+    }
 
-        // Check where the pointer is (trackpad or watch) 20× a second.
+    func setVisible(_ visible: Bool) {
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+        if !visible {
+            live.hovered = false
+            panel.ignoresMouseEvents = true
+            panel.orderOut(nil)
+            return
+        }
+        panel.orderFrontRegardless()
         hoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
             self?.checkHover()
         }

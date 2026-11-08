@@ -7,6 +7,8 @@ if !AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary) {
     print("Grant Accessibility access to your terminal app (System Settings › Privacy & Security › Accessibility), then rerun.")
 }
 
+print("Accessibility permission: \(AXIsProcessTrusted() ? "granted" : "missing")")
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory) // no Dock icon, just the notch
 let live = Live()

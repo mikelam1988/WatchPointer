@@ -177,7 +177,11 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         switch kind {
         case .gesture:
             clickSequence.reset()
-            guard phase != .paused, let binding = gestureMappings.binding(for: a) else { return }
+            guard phase != .paused, let binding = gestureMappings.binding(for: a) else {
+                log("gesture id=\(a) ignored (paused or unknown)")
+                return
+            }
+            log("gesture id=\(a) → \(binding.action); accessibility=\(AXIsProcessTrusted())")
             drop()
             performGesture(binding)
         case .heartbeat: break

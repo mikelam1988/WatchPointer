@@ -82,3 +82,9 @@ Pairing is chosen on the watch. The Mac itself doesn't ask for confirmation yet,
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## Multi-touch hardware check
+
+The Mac menu on the Watch has a **触点检测** (touch diagnostic) page. It displays current and maximum simultaneous touch events reported by `SpatialEventGesture`, without sending mouse commands. Availability of this API does not establish that a particular Watch reports multiple fingers.
+
+Requested mappings, pending physical-device validation: two fingers for secondary click; three fingers horizontally to change Spaces, up for Mission Control, down for Show Desktop. These mappings are not enabled yet. The existing system Double Tap right-click remains until multi-touch support is verified.

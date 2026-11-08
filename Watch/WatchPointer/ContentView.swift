@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var clicks = 0
     @State private var confirmUnpair = false
     @State private var unpairTitle = ""
+    @State private var showTouchDiagnostics = false
 
     var body: some View {
         NavigationStack {
@@ -26,9 +27,15 @@ struct ContentView: View {
                         }
                     }
                 }
+                .sheet(isPresented: $showTouchDiagnostics) {
+                    TouchDiagnosticsView()
+                }
                 .confirmationDialog(unpairTitle, isPresented: $confirmUnpair, titleVisibility: .visible) {
                     Button(pointer.paused ? "继续操控" : "暂停操控", systemImage: pointer.paused ? "play.fill" : "pause.fill") {
                         pointer.togglePause()
+                    }
+                    Button("触点检测") {
+                        showTouchDiagnostics = true
                     }
                     Button("Unpair", role: .destructive) {
                         // Unpair once the dialog has closed; changing the screen under it made it pop up a second time.
@@ -41,7 +48,7 @@ struct ContentView: View {
     private var remote: some View {
         Group {
             if pointer.connected {
-                ClickPad(paused: pointer.paused, gestureEnabled: !confirmUnpair,
+                ClickPad(paused: pointer.paused, gestureEnabled: !confirmUnpair && !showTouchDiagnostics,
                          clicks: $clicks, pointer: pointer)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 4)
@@ -61,7 +68,9 @@ struct ContentView: View {
         .focusable()
         .focused($crownFocused)
         .digitalCrownRotation($crown)
-        .onChange(of: crown) { old, new in pointer.scroll(by: (new - old) * crownPixels) }
+        .onChange(of: crown) { old, new in
+            if !showTouchDiagnostics { pointer.scroll(by: (new - old) * crownPixels) }
+        }
         .onAppear { crownFocused = true }
         .onChange(of: pointer.connected) { crownFocused = true }
         .sensoryFeedback(.impact(weight: .light), trigger: clicks)
@@ -245,5 +254,43 @@ private struct PressStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.6 : 1)
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.smooth(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// Verify actual hardware touch reporting before enabling multi-finger commands.
+private struct TouchDiagnosticsView: View {
+    @State private var active: [SpatialEventCollection.Event.ID: CGPoint] = [:]
+    @State private var maximum = 0
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("触点检测").font(.headline)
+            Text("当前 \(active.count) · 最多 \(maximum)")
+                .monospacedDigit()
+            ZStack {
+                RoundedRectangle(cornerRadius: 18).fill(Color.blue.opacity(0.2))
+                Text("在此放下两根或三根手指\n并轻轻滑动")
+                    .font(.caption2).multilineTextAlignment(.center)
+                ForEach(Array(active.keys), id: \.self) { id in
+                    if let point = active[id] {
+                        Circle().fill(.blue).frame(width: 18, height: 18)
+                            .position(point)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(SpatialEventGesture().onChanged { events in
+                for event in events where event.kind == .touch {
+                    switch event.phase {
+                    case .active: active[event.id] = event.location
+                    case .ended, .cancelled: active.removeValue(forKey: event.id)
+                    @unknown default: active.removeValue(forKey: event.id)
+                    }
+                }
+                maximum = max(maximum, active.count)
+            }.onEnded { _ in active.removeAll() })
+            Text("仅检测，不发送鼠标操作").font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(6)
     }
 }

@@ -10,7 +10,7 @@ This branch replaces motion aiming with touch input. Both the Mac receiver and e
 
 - **Swipe** the large touch area to move the cursor relatively. Lift and reposition your finger to continue moving.
 - **Tap** to click. **Hold still for 0.35 seconds, then swipe** to drag; lift to release.
-- Use the system **Double Tap** primary-action gesture to right-click (requires a supported Watch and the system gesture enabled). This is not the AssistiveTouch single-pinch gesture. Turn the **Digital Crown** to scroll.
+- **Two-finger tap** performs the configured secondary action (right click by default). Lift both fingers to confirm; three-finger gestures suppress secondary click. Turn the **Digital Crown** to scroll.
 - **Pause / Resume** lives in the top-left Mac menu and disables touch input and the right-click gesture while paused. No wrist motion or Center calibration is needed.
 - Pair once with your Mac over Bluetooth. No Wi-Fi or iPhone relay is needed during use.
 
@@ -87,4 +87,34 @@ MIT, see [LICENSE](LICENSE).
 
 The Mac menu on the Watch has a **触点检测** (touch diagnostic) page. It displays current and maximum simultaneous touch events reported by `SpatialEventGesture`, without sending mouse commands. Availability of this API does not establish that a particular Watch reports multiple fingers.
 
-Requested mappings, pending physical-device validation: two fingers for secondary click; three fingers horizontally to change Spaces, up for Mission Control, down for Show Desktop. These mappings are not enabled yet. The existing system Double Tap right-click remains until multi-touch support is verified.
+Two-finger tap and three-finger swipes are enabled. System Double Tap is no longer bound. Four-finger contacts are ignored. Gestures fire once on lift; cancelled gestures do not click.
+
+## Customize Mac gesture actions
+
+On first launch the receiver creates `~/Library/Application Support/WatchPointer/gestures.json`. Edit this JSON on each Mac; changes reload on the next gesture, with no Watch reinstall or receiver restart. Invalid files retain the last valid mappings and log an error. Missing entries use defaults.
+
+| Event | Default action |
+| --- | --- |
+| twoFingerTap | rightClick |
+| threeFingerLeft | nextDesktop (Control–Right) |
+| threeFingerRight | previousDesktop (Control–Left) |
+| threeFingerUp | missionControl (Control–Up) |
+| threeFingerDown | showDesktop (F11) |
+
+Actions: `rightClick`, `leftClick`, `nextDesktop`, `previousDesktop`, `missionControl`, `showDesktop`, `shortcut`, `none`. Desktop actions require the corresponding macOS keyboard shortcuts enabled in System Settings → Keyboard → Keyboard Shortcuts → Mission Control. Switching desktops requires multiple Spaces. These are discrete shortcut actions, not interactive macOS trackpad animations.
+
+Custom shortcut example (Control–Down for App Exposé):
+
+```json
+{
+  "threeFingerDown": {
+    "action": "shortcut",
+    "keyCode": 125,
+    "modifiers": ["control"]
+  }
+}
+```
+
+`keyCode` uses macOS virtual key codes (0–127). Modifiers: `command`, `control`, `option`, `shift`. The JSON does not execute shell commands. Packet kind 10 carries event IDs 0–4 in the order listed above; the Watch sends the gesture, not the configured action.
+
+Checks: compile each file in `Tests/` with its matching implementation (`TouchInterpreter.swift`, `PendingMotion.swift`, or `GestureMappings.swift`) using `swiftc` and run the result.

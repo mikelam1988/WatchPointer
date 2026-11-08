@@ -21,7 +21,7 @@ struct WatchPointerApp: App {
 /// `.info`: [kind, JSON] with the watch's model id, watchOS, battery and name (not the fixed 5 bytes).
 /// `.drag`: a = 1 grab (mouse down), 0 drop (mouse up).
 /// Clicks and drags may add the same UInt16 ms time as `.aim`: when the thumb touched down (or lifted, for a drop).
-enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, heartbeat = 9 }
+enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, heartbeat = 9, gesture = 10 }
 
 /// How long to hold still before beginning a touch drag.
 let holdToDrag = 0.35

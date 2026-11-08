@@ -34,7 +34,7 @@ let fallbackRewind = 0.1
 /// `.info`: [kind, JSON] describing the watch (see WatchInfo), not the fixed 5 bytes.
 /// `.drag`: a = 1 grab (mouse down), 0 drop (mouse up).
 /// Clicks and drags may add the same UInt16 ms time as `.aim`: when the thumb touched down (or lifted, for a drop).
-enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, heartbeat = 9 }
+enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, heartbeat = 9, gesture = 10 }
 
 /// 1€ filter (Casiez et al. 2012): heavy smoothing when the hand is nearly still (no jitter),
 /// almost none when it moves fast (no lag). The standard choice for pointing devices.
@@ -84,6 +84,7 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     private var frameTimer: DispatchSourceTimer?
     private var history: [(time: Double, point: CGPoint)] = [] // where the cursor was, last ~1 s
     private var dragging = false
+    private let gestureMappings = GestureMappings()
     private var touchMode = false
     private var lastTouchPacket = 0.0
 
@@ -172,6 +173,10 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
             if phase == .waiting || phase == .idle { setPhase(.live) }
         }
         switch kind {
+        case .gesture:
+            guard phase != .paused, let binding = gestureMappings.binding(for: a) else { return }
+            drop()
+            performGesture(binding)
         case .heartbeat: break
         case .move:
             guard phase != .paused else { return }
@@ -197,6 +202,40 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         case .scroll:
             CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(a), wheel2: 0, wheel3: 0)?
                 .post(tap: .cghidEventTap)
+        }
+    }
+
+    private func performGesture(_ binding: GestureBinding) {
+        switch binding.action {
+        case "none": return
+        case "rightClick": click(.right, at: nil)
+        case "leftClick": click(.left, at: nil)
+        case "nextDesktop": shortcut(124, [.maskControl])
+        case "previousDesktop": shortcut(123, [.maskControl])
+        case "missionControl": shortcut(126, [.maskControl])
+        case "showDesktop": shortcut(103, []) // F11: standard Show Desktop shortcut
+        case "shortcut":
+            guard let key = binding.keyCode else { return }
+            var flags: CGEventFlags = []
+            for modifier in binding.modifiers ?? [] {
+                switch modifier {
+                case "command": flags.insert(.maskCommand)
+                case "control": flags.insert(.maskControl)
+                case "option": flags.insert(.maskAlternate)
+                case "shift": flags.insert(.maskShift)
+                default: break
+                }
+            }
+            shortcut(key, flags)
+        default: return
+        }
+    }
+
+    private func shortcut(_ key: CGKeyCode, _ flags: CGEventFlags) {
+        for down in [true, false] {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: down)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
         }
     }
 

@@ -158,94 +158,69 @@ private struct ClickPad: View {
     @Binding var clicks: Int
     let pointer: Pointer
 
-    @State private var pressing = false
+    @State private var touches: [SpatialEventCollection.Event.ID: CGPoint] = [:]
+    @State private var interpreter = TouchInterpreter<SpatialEventCollection.Event.ID>()
     @State private var dragging = false
     @State private var holdTimer: Timer?
-    @State private var lastTranslation: CGSize = .zero
-    @State private var moved = false
     @Environment(\.scenePhase) private var scenePhase
 
-    private var fill: Color {
-        if dragging { return .white }
-        if paused { return Color.orange.opacity(0.25) }
-        return Color(white: pressing ? 0.28 : 0.16)
-    }
-
-    private var symbol: String { dragging ? "hand.raised.fill" : paused ? "pause.fill" : "hand.draw" }
-
     var body: some View {
-        Button {
-            guard !paused, !pressing, !dragging, gestureEnabled, scenePhase == .active else { return }
-            clicks += 1
-            pointer.send(.rightClick)
-        } label: {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(fill)
+            .fill(paused ? Color.orange.opacity(0.25) : Color(white: dragging ? 0.5 : touches.isEmpty ? 0.16 : 0.28))
             .overlay {
-                Image(systemName: symbol)
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(dragging ? .black : paused ? .orange : Color(white: 0.55))
-                    .contentTransition(.symbolEffect(.replace))
+                Image(systemName: paused ? "pause.fill" : dragging ? "hand.raised.fill" : "hand.draw")
+                    .font(.system(size: 28)).foregroundStyle(.secondary)
             }
-        }
-            .buttonStyle(.plain)
-            .accessibilityLabel("触摸板，系统双指互点两下执行右键")
-            .handGestureShortcut(.primaryAction,
-                                 isEnabled: gestureEnabled && !paused && !pressing && scenePhase == .active)
-            .scaleEffect(pressing && !dragging ? 0.98 : 1)
-            .animation(.smooth(duration: 0.15), value: pressing)
-            .animation(.smooth(duration: 0.2), value: dragging)
             .contentShape(Rectangle())
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        guard !paused else { return }
-                        if !pressing {
-                            pressing = true
-                            moved = false
-                            lastTranslation = .zero
-                            holdTimer = Timer.scheduledTimer(withTimeInterval: holdToDrag, repeats: false) { _ in
-                                guard pressing, !moved, !paused else { return }
-                                dragging = true
-                                pointer.send(.drag, 1)
-                            }
-                        }
-                        let translation = value.translation
-                        if !moved && hypot(translation.width, translation.height) > 3 {
-                            moved = true
-                            holdTimer?.invalidate()
-                        }
-                        if moved || dragging {
-                            pointer.move(dx: Double(translation.width - lastTranslation.width),
-                                         dy: Double(translation.height - lastTranslation.height))
-                            lastTranslation = translation
-                        }
+            .gesture(SpatialEventGesture().onChanged { events in
+                guard !paused, gestureEnabled, scenePhase == .active else { cancelTouch(); return }
+                let wasEmpty = touches.isEmpty
+                var cancelled = false
+                for event in events where event.kind == .touch {
+                    switch event.phase {
+                    case .active: touches[event.id] = event.location
+                    case .ended: touches.removeValue(forKey: event.id)
+                    case .cancelled: touches.removeValue(forKey: event.id); cancelled = true
+                    @unknown default: cancelled = true; touches.removeValue(forKey: event.id)
                     }
-                    .onEnded { _ in
-                        if pressing && !paused && !dragging && !moved {
-                            clicks += 1
-                            pointer.send(.leftClick)
-                        }
-                        cancelTouch()
+                }
+                emit(interpreter.update(touches, now: ProcessInfo.processInfo.systemUptime, cancelled: cancelled))
+                if wasEmpty && !touches.isEmpty {
+                    holdTimer?.invalidate()
+                    holdTimer = Timer.scheduledTimer(withTimeInterval: 0.36, repeats: false) { _ in
+                        emit(interpreter.hold(now: ProcessInfo.processInfo.systemUptime))
                     }
-            )
+                }
+                if touches.isEmpty { holdTimer?.invalidate() }
+            }.onEnded { _ in
+                emit(interpreter.update([:], now: ProcessInfo.processInfo.systemUptime))
+                cancelTouch()
+            })
             .onDisappear { cancelTouch() }
             .onChange(of: paused) { cancelTouch() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active { cancelTouch() }
-            }
+            .onChange(of: gestureEnabled) { cancelTouch() }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { cancelTouch() } }
             .sensoryFeedback(trigger: dragging) { _, now in .impact(weight: now ? .heavy : .light) }
     }
-    private func cancelTouch() {
-        holdTimer?.invalidate()
-        holdTimer = nil
-        if dragging { pointer.send(.drag, 0) }
-        dragging = false
-        pressing = false
-        moved = false
-        lastTranslation = .zero
+
+    private func emit(_ outputs: [TouchInterpreter<SpatialEventCollection.Event.ID>.Output]) {
+        for output in outputs {
+            switch output {
+            case let .move(dx, dy): pointer.move(dx: dx, dy: dy)
+            case .leftClick: clicks += 1; pointer.send(.leftClick)
+            case .dragStart: dragging = true; pointer.send(.drag, 1)
+            case .dragEnd: dragging = false; pointer.send(.drag, 0)
+            case let .gesture(id): clicks += 1; pointer.send(.gesture, id)
+            }
+        }
     }
 
+    private func cancelTouch() {
+        holdTimer?.invalidate(); holdTimer = nil
+        emit(interpreter.cancel())
+        touches.removeAll()
+        dragging = false
+    }
 }
 
 private struct PressStyle: ButtonStyle {

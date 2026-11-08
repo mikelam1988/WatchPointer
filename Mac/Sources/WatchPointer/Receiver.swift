@@ -85,6 +85,7 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     private var history: [(time: Double, point: CGPoint)] = [] // where the cursor was, last ~1 s
     private var dragging = false
     private var clickSequence = ClickSequence()
+    private let keyboardQueue = DispatchQueue(label: "WatchPointer.keyboard")
     private let gestureMappings = GestureMappings()
     private var touchMode = false
     private var lastTouchPacket = 0.0
@@ -241,10 +242,32 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     }
 
     private func shortcut(_ key: CGKeyCode, _ flags: CGEventFlags) {
-        for down in [true, false] {
-            let event = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: down)
-            event?.flags = flags
-            event?.post(tap: .cghidEventTap)
+        keyboardQueue.async {
+            guard let source = CGEventSource(stateID: .privateState) else { return }
+            let modifiers: [(CGEventFlags, CGKeyCode)] = [
+                (.maskControl, 59), (.maskAlternate, 58), (.maskShift, 56), (.maskCommand, 55)
+            ]
+            var held: CGEventFlags = []
+            func post(_ code: CGKeyCode, down: Bool, flags: CGEventFlags, modifier: Bool = false) {
+                guard let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down) else { return }
+                if modifier { event.type = .flagsChanged }
+                // Keep the key's native function/numeric-pad bits (notably arrow keys).
+                let native = event.flags.intersection([.maskSecondaryFn, .maskNumericPad])
+                event.flags = flags.union(native)
+                event.post(tap: .cghidEventTap)
+            }
+            for (flag, code) in modifiers where flags.contains(flag) {
+                held.insert(flag)
+                post(code, down: true, flags: held, modifier: true)
+            }
+            Thread.sleep(forTimeInterval: 0.015)
+            post(key, down: true, flags: held)
+            Thread.sleep(forTimeInterval: 0.035)
+            post(key, down: false, flags: held)
+            for (flag, code) in modifiers.reversed() where flags.contains(flag) {
+                held.remove(flag)
+                post(code, down: false, flags: held, modifier: true)
+            }
         }
     }
 

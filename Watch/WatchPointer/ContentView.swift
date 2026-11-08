@@ -3,7 +3,7 @@ import SwiftUI
 /// Mac scroll distance, in pixels, per unit of Crown turn. Higher = faster scrolling.
 private let crownPixels = 25.0
 
-/// A remote you use without looking: one big pad, three buttons in fixed places, haptics for feedback.
+/// Full-size trackpad with connection controls in the Mac menu.
 struct ContentView: View {
     @StateObject private var pointer = Pointer()
     @State private var crown = 0.0
@@ -27,6 +27,9 @@ struct ContentView: View {
                     }
                 }
                 .confirmationDialog(unpairTitle, isPresented: $confirmUnpair, titleVisibility: .visible) {
+                    Button(pointer.paused ? "继续操控" : "暂停操控", systemImage: pointer.paused ? "play.fill" : "pause.fill") {
+                        pointer.togglePause()
+                    }
                     Button("Unpair", role: .destructive) {
                         // Unpair once the dialog has closed; changing the screen under it made it pop up a second time.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { pointer.forget() }
@@ -38,21 +41,9 @@ struct ContentView: View {
     private var remote: some View {
         Group {
             if pointer.connected {
-                VStack(spacing: 6) {
-                    ClickPad(paused: pointer.paused, clicks: $clicks, pointer: pointer)
-                        .frame(maxHeight: .infinity)
-                    HStack(spacing: 6) {
-                        PadButton(symbol: "contextualmenu.and.cursorarrow") {
-                            clicks += 1
-                            // Buttons fire on release; a press lasts about this long, so this is roughly touch-down.
-                            pointer.send(.rightClick)
-                        }
-                        PadButton(symbol: pointer.paused ? "play.fill" : "pause.fill", tint: pointer.paused ? .orange : .white) {
-                            pointer.togglePause()
-                        }
-                    }
-                    .frame(height: 52)
-                }
+                ClickPad(paused: pointer.paused, gestureEnabled: !confirmUnpair,
+                         clicks: $clicks, pointer: pointer)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 4)
                 .transition(.opacity)
             } else if let name = pointer.pairedName {
@@ -154,6 +145,7 @@ private struct WaitingForMac: View {
 /// Swipe to move; tap to click; hold still then swipe to drag.
 private struct ClickPad: View {
     let paused: Bool
+    let gestureEnabled: Bool
     @Binding var clicks: Int
     let pointer: Pointer
 
@@ -173,6 +165,11 @@ private struct ClickPad: View {
     private var symbol: String { dragging ? "hand.raised.fill" : paused ? "pause.fill" : "hand.draw" }
 
     var body: some View {
+        Button {
+            guard !paused, !pressing, !dragging, gestureEnabled, scenePhase == .active else { return }
+            clicks += 1
+            pointer.send(.rightClick)
+        } label: {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(fill)
             .overlay {
@@ -181,11 +178,16 @@ private struct ClickPad: View {
                     .foregroundStyle(dragging ? .black : paused ? .orange : Color(white: 0.55))
                     .contentTransition(.symbolEffect(.replace))
             }
+        }
+            .buttonStyle(.plain)
+            .accessibilityLabel("触摸板，系统双指互点两下执行右键")
+            .handGestureShortcut(.primaryAction,
+                                 isEnabled: gestureEnabled && !paused && !pressing && scenePhase == .active)
             .scaleEffect(pressing && !dragging ? 0.98 : 1)
             .animation(.smooth(duration: 0.15), value: pressing)
             .animation(.smooth(duration: 0.2), value: dragging)
             .contentShape(Rectangle())
-            .gesture(
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         guard !paused else { return }
@@ -235,26 +237,6 @@ private struct ClickPad: View {
         lastTranslation = .zero
     }
 
-}
-
-private struct PadButton: View {
-    let symbol: String
-    var tint: Color = .white
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(white: 0.16))
-                .overlay {
-                    Image(systemName: symbol)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(tint)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-        }
-        .buttonStyle(PressStyle())
-    }
 }
 
 private struct PressStyle: ButtonStyle {

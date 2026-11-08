@@ -17,7 +17,7 @@ struct WatchPointerPhoneApp: App {
                         Text("在 Mac 上启动 WatchPointer 接收器，打开手表上的 WatchPointer，轻点 Mac 名称旁的 Pair。")
                     }
                     Section("3 · 开始操控") {
-                        Text("在手表触控区滑动移动光标，轻点点击；按住不动片刻，再滑动即可拖拽，抬手释放。转动数码表冠滚动，无需转动手腕或校准。")
+                        Text("在手表触控区滑动移动光标，轻点点击；按住不动片刻，再滑动即可拖拽，抬手释放。转动数码表冠滚动。系统双指互点两下执行右键（需手表支持并开启此手势）；左上角 Mac 菜单可暂停或继续操控。无需转动手腕或校准。")
                     }
                 }
                 .navigationTitle("WatchPointer")

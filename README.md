@@ -10,8 +10,8 @@ This branch replaces motion aiming with touch input. Both the Mac receiver and e
 
 - **Swipe** the large touch area to move the cursor relatively. Lift and reposition your finger to continue moving.
 - **Tap** to click. **Hold still for 0.35 seconds, then swipe** to drag; lift to release.
-- Use the **right-click** button or **Digital Crown** to scroll.
-- **Pause** disables touch input. No wrist motion or Center calibration is needed.
+- Use the system **Double Tap** primary-action gesture to right-click (requires a supported Watch and the system gesture enabled). This is not the AssistiveTouch single-pinch gesture. Turn the **Digital Crown** to scroll.
+- **Pause / Resume** lives in the top-left Mac menu and disables touch input and the right-click gesture while paused. No wrist motion or Center calibration is needed.
 - Pair once with your Mac over Bluetooth. No Wi-Fi or iPhone relay is needed during use.
 
 ## Requirements

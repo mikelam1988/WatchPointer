@@ -38,12 +38,17 @@ The first time, macOS asks for **Bluetooth** access and for **Accessibility** ac
 
 It shows up in the notch (or the middle of the menu bar on Macs without one).
 
-### 2. Watch app
+### 2. iPhone companion and Watch app
 
-1. Open `Watch/WatchPointer.xcodeproj` in Xcode.
-2. In **Signing & Capabilities**, pick your team. If Xcode complains about the bundle identifier, change it to something of your own.
-3. Choose your Apple Watch as the run destination and press **⌘R**.
-4. Open WatchPointer on the watch and tap **Pair** next to your Mac.
+1. Open `Watch/WatchPointer.xcodeproj` in Xcode and select the **WatchPointerPhone** scheme.
+2. Select your connected physical iPhone as the run destination. Both targets use automatic signing; choose your own team for both when building on another account.
+3. Press **⌘R** to install the iPhone app, which embeds the Watch app.
+4. On the iPhone, open Apple's **Watch** app → **My Watch** → **Available Apps** → **WatchPointer** → **Install** (unless already installed automatically).
+5. Open WatchPointer on the watch and tap **Pair** next to your Mac.
+
+The iPhone app contains setup instructions; it does not relay pointer data. The Watch app still talks directly to the Mac over Bluetooth. Installation requires a properly paired and connected iPhone/Watch and any developer-mode/trust confirmations requested by the devices.
+
+Bundle identifiers: iPhone `io.loopbreak.watchpointer`, embedded Watch app `io.loopbreak.watchpointer.watchkitapp`. The Watch bundle identifier differs from the original standalone build, so an existing standalone installation does not share its saved pairing with this version.
 
 ### 3. Point
 

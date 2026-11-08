@@ -84,6 +84,7 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     private var frameTimer: DispatchSourceTimer?
     private var history: [(time: Double, point: CGPoint)] = [] // where the cursor was, last ~1 s
     private var dragging = false
+    private var clickSequence = ClickSequence()
     private let gestureMappings = GestureMappings()
     private var touchMode = false
     private var lastTouchPacket = 0.0
@@ -132,6 +133,7 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     /// The watch's Bluetooth link closed (app quit, out of range, watch asleep long enough to drop it).
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
         drop()
+        clickSequence.reset()
         watchInfo = nil
         ui { $0.watch = nil } // don't keep showing an old battery level or model
         if phase != .waiting {
@@ -174,6 +176,7 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         }
         switch kind {
         case .gesture:
+            clickSequence.reset()
             guard phase != .paused, let binding = gestureMappings.binding(for: a) else { return }
             drop()
             performGesture(binding)
@@ -194,12 +197,14 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         case .center: log("centered"); ui { $0.show(.centered) }
         case .drag: a != 0 ? grab(at: when(d)) : drop(at: when(d))
         case .pause:
+            clickSequence.reset()
             let paused = a != 0
             if paused { drop() }
             log(paused ? "paused" : "resumed")
             setPhase(paused ? .paused : .live, toast: paused ? .paused : .resumed)
         case .info: break // handled above
         case .scroll:
+            clickSequence.reset()
             CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(a), wheel2: 0, wheel3: 0)?
                 .post(tap: .cghidEventTap)
         }
@@ -368,8 +373,10 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         return before.point
     }
 
-    private func post(_ type: CGEventType, _ p: CGPoint, _ button: CGMouseButton = .left) {
-        CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: button)?.post(tap: .cghidEventTap)
+    private func post(_ type: CGEventType, _ p: CGPoint, _ button: CGMouseButton = .left, clickCount: Int64 = 1) {
+        let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: button)
+        event?.setIntegerValueField(.mouseEventClickState, value: clickCount)
+        event?.post(tap: .cghidEventTap)
     }
 
     private func click(_ button: CGMouseButton, at time: Double?) {
@@ -377,13 +384,18 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         post(dragging ? .leftMouseDragged : .mouseMoved, p)
         let (down, up): (CGEventType, CGEventType) = button == .left ? (.leftMouseDown, .leftMouseUp)
                                                                      : (.rightMouseDown, .rightMouseUp)
-        post(down, p, button)
-        post(up, p, button)
+        let count: Int64
+        if button == .left {
+            count = clickSequence.next(at: ProcessInfo.processInfo.systemUptime, point: p, interval: NSEvent.doubleClickInterval)
+        } else { clickSequence.reset(); count = 1 }
+        post(down, p, button, clickCount: count)
+        post(up, p, button, clickCount: count)
     }
 
     /// Mouse down where the pointer was when the thumb pressed; following aim then drags.
     private func grab(at time: Double?) {
         guard !dragging else { return }
+        clickSequence.reset()
         let p = pressPoint(at: time ?? ProcessInfo.processInfo.systemUptime - 0.45)
         post(.mouseMoved, p)
         post(.leftMouseDown, p)

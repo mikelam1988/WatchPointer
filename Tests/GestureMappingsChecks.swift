@@ -14,6 +14,10 @@ import Foundation
   precondition(mappings.binding(for:0)?.action == "none")
   try Data("broken".utf8).write(to:url)
   precondition(mappings.binding(for:0)?.action == "none")
+  try Data("{\"threeFingerLeft\":{\"action\":\"none\"}}".utf8).write(to:url)
+  precondition(mappings.binding(for:1)?.action == "none")
+  try Data("{\"threeFingerLeft\":{\"action\":\"none\"},\"twoFingerLeft\":{\"action\":\"leftClick\"}}".utf8).write(to:url)
+  precondition(mappings.binding(for:1)?.action == "leftClick")
   print("Mapping reload and validation checks passed")
  }
 }

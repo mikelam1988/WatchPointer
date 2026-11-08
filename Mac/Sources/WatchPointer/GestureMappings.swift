@@ -7,13 +7,13 @@ struct GestureBinding: Codable {
 }
 
 final class GestureMappings {
-    static let names = ["twoFingerTap", "threeFingerLeft", "threeFingerRight", "threeFingerUp", "threeFingerDown"]
+    static let names = ["twoFingerTap", "twoFingerLeft", "twoFingerRight", "twoFingerUp", "twoFingerDown"]
     static let defaults: [String: GestureBinding] = [
         "twoFingerTap": .init(action: "rightClick"),
-        "threeFingerLeft": .init(action: "nextDesktop"),
-        "threeFingerRight": .init(action: "previousDesktop"),
-        "threeFingerUp": .init(action: "missionControl"),
-        "threeFingerDown": .init(action: "showDesktop")
+        "twoFingerLeft": .init(action: "nextDesktop"),
+        "twoFingerRight": .init(action: "previousDesktop"),
+        "twoFingerUp": .init(action: "missionControl"),
+        "twoFingerDown": .init(action: "showDesktop")
     ]
     let url: URL
     private var bindings = defaults
@@ -29,9 +29,18 @@ final class GestureMappings {
         } catch { print("Cannot create gesture config: \(error)") }
         print("Gesture mappings (reload on use): \(url.path)")
     }
+    /// Accept old files without losing customized actions; new names take precedence.
+    static func normalized(_ map: [String: GestureBinding]) -> [String: GestureBinding] {
+        var result = map
+        for direction in ["Left", "Right", "Up", "Down"] {
+            let old = "threeFinger" + direction, new = "twoFinger" + direction
+            if let binding = result.removeValue(forKey: old), result[new] == nil { result[new] = binding }
+        }
+        return result
+    }
     static func validate(_ map: [String: GestureBinding]) -> Bool {
         let actions = ["rightClick", "leftClick", "nextDesktop", "previousDesktop", "missionControl", "showDesktop", "shortcut", "none"]
-        return map.allSatisfy { name, value in
+        return normalized(map).allSatisfy { name, value in
             names.contains(name) && actions.contains(value.action) &&
             (value.action != "shortcut" || (value.keyCode != nil && value.keyCode! <= 127)) &&
             (value.modifiers ?? []).allSatisfy { ["command", "control", "option", "shift"].contains($0) }
@@ -44,7 +53,7 @@ final class GestureMappings {
             if data != lastData {
                 let parsed = try JSONDecoder().decode([String: GestureBinding].self, from: data)
                 if Self.validate(parsed) {
-                    bindings = Self.defaults.merging(parsed) { _, new in new }
+                    bindings = Self.defaults.merging(Self.normalized(parsed)) { _, new in new }
                 } else { print("Invalid gesture config; retaining last valid mappings") }
                 lastData = data
             }

@@ -13,7 +13,7 @@ final class GestureSettingsModel: ObservableObject {
         do {
             let parsed = try JSONDecoder().decode([String: GestureBinding].self, from: Data(contentsOf: store.url))
             guard GestureMappings.validate(parsed) else { throw CocoaError(.fileReadCorruptFile) }
-            bindings = GestureMappings.defaults.merging(parsed) { _, new in new }
+            bindings = GestureMappings.defaults.merging(GestureMappings.normalized(parsed)) { _, new in new }
             message = "修改后自动保存，即时生效"
         } catch { message = "读取配置失败，未覆盖文件：\(error.localizedDescription)" }
     }
@@ -81,7 +81,7 @@ final class GestureSettingsController: NSWindowController, NSWindowDelegate {
 
 private struct GestureSettingsView: View {
     @ObservedObject var model: GestureSettingsModel
-    private let labels = ["双指轻点", "三指左滑", "三指右滑", "三指上滑", "三指下滑"]
+    private let labels = ["双指轻点", "双指左滑", "双指右滑", "双指上滑", "双指下滑"]
     private let actions = [("rightClick", "右键点击"), ("leftClick", "左键点击"),
                            ("nextDesktop", "下一桌面"), ("previousDesktop", "上一桌面"),
                            ("missionControl", "调度中心"), ("showDesktop", "显示桌面"),

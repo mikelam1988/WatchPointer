@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-/// One gesture lasts until every finger lifts. Never downgrade a three-finger gesture to a tap.
+/// One gesture lasts until every finger lifts. Never turn a swipe or extra-finger contact into a tap.
 struct TouchInterpreter<ID: Hashable> {
     enum Output: Equatable {
         case move(Double, Double), leftClick, dragStart, dragEnd, gesture(Int16)
@@ -30,11 +30,9 @@ struct TouchInterpreter<ID: Hashable> {
                 if moved || dragging {
                     result.append(.move(dx, dy))
                 }
-            } else if touches.count == 3 && maxCount == 3 {
-                travel.x += dx; travel.y += dy
             } else if touches.count == 2 && maxCount == 2 {
-                singleTravel.x += dx; singleTravel.y += dy
-                if hypot(singleTravel.x, singleTravel.y) > 8 { moved = true }
+                travel.x += dx; travel.y += dy
+                if hypot(travel.x, travel.y) > 8 { moved = true }
             }
         }
         if touches.isEmpty && !previous.isEmpty {
@@ -42,7 +40,7 @@ struct TouchInterpreter<ID: Hashable> {
             else if !cancelled {
                 if maxCount == 1 && !moved { result.append(.leftClick) }
                 if maxCount == 2 && !moved && now - startTime < 0.7 { result.append(.gesture(0)) }
-                if maxCount == 3 {
+                if maxCount == 2 && moved {
                     if abs(travel.x) >= 24 && abs(travel.x) > abs(travel.y) * 1.3 {
                         result.append(.gesture(travel.x < 0 ? 1 : 2))
                     } else if abs(travel.y) >= 24 && abs(travel.y) > abs(travel.x) * 1.3 {

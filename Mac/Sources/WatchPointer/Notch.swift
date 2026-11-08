@@ -166,9 +166,13 @@ struct NotchView: View {
                     }
                 }
                 .padding(.bottom, 2)
-                stat("arrow.left.and.right", live.phase == .live ? String(format: "%+.1f°", -live.aimLeft) : "–")
-                stat("arrow.up.and.down", live.phase == .live ? String(format: "%+.1f°", live.aimUp) : "–")
-                stat("waveform", live.phase == .live ? "\(live.rate) Hz" : "–")
+                Button {
+                    GestureSettingsController.shared.open()
+                } label: {
+                    Label("设置", systemImage: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .help("自定义手势与快捷键")
                 stat(batterySymbol, live.watch.map { $0.battery < 0 ? "–" : "\($0.battery)%" } ?? "–")
             }
             .foregroundStyle(.white)

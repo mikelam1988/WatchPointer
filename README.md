@@ -91,6 +91,8 @@ Two-finger tap and three-finger swipes are enabled. System Double Tap is no long
 
 ## Customize Mac gesture actions
 
+Hover over the top-center receiver panel and click **设置** to choose actions, record a custom keyboard shortcut, or restore defaults. Changes save immediately. You can also open settings at startup with `swift run WatchPointer --settings`. No Watch update is required for mapping changes.
+
 On first launch the receiver creates `~/Library/Application Support/WatchPointer/gestures.json`. Edit this JSON on each Mac; changes reload on the next gesture, with no Watch reinstall or receiver restart. Invalid files retain the last valid mappings and log an error. Missing entries use defaults.
 
 | Event | Default action |

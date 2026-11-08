@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Mac scroll distance, in pixels, per unit of Crown turn. Higher = faster scrolling.
-private let crownPixels = 100.0
+private let crownPixels = 25.0
 
 /// A remote you use without looking: one big pad, three buttons in fixed places, haptics for feedback.
 struct ContentView: View {

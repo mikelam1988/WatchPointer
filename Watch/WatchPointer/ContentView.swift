@@ -9,7 +9,6 @@ struct ContentView: View {
     @State private var crown = 0.0
     @FocusState private var crownFocused: Bool
     @State private var clicks = 0
-    @State private var centers = 0
     @State private var confirmUnpair = false
     @State private var unpairTitle = ""
 
@@ -46,11 +45,7 @@ struct ContentView: View {
                         PadButton(symbol: "contextualmenu.and.cursorarrow") {
                             clicks += 1
                             // Buttons fire on release; a press lasts about this long, so this is roughly touch-down.
-                            pointer.send(.rightClick, at: ProcessInfo.processInfo.systemUptime - 0.12)
-                        }
-                        PadButton(symbol: "scope") {
-                            centers += 1
-                            pointer.center()
+                            pointer.send(.rightClick)
                         }
                         PadButton(symbol: pointer.paused ? "play.fill" : "pause.fill", tint: pointer.paused ? .orange : .white) {
                             pointer.togglePause()
@@ -79,7 +74,6 @@ struct ContentView: View {
         .onAppear { crownFocused = true }
         .onChange(of: pointer.connected) { crownFocused = true }
         .sensoryFeedback(.impact(weight: .light), trigger: clicks)
-        .sensoryFeedback(.success, trigger: centers)
         .sensoryFeedback(.selection, trigger: pointer.paused)
         .sensoryFeedback(trigger: pointer.connected) { _, now in now ? .start : .stop }
     }
@@ -157,7 +151,7 @@ private struct WaitingForMac: View {
     }
 }
 
-/// Tap = click. Hold = grab (mouse down); point to move; let go to drop.
+/// Swipe to move; tap to click; hold still then swipe to drag.
 private struct ClickPad: View {
     let paused: Bool
     @Binding var clicks: Int
@@ -166,7 +160,9 @@ private struct ClickPad: View {
     @State private var pressing = false
     @State private var dragging = false
     @State private var holdTimer: Timer?
-    @State private var touchDown: TimeInterval = 0
+    @State private var lastTranslation: CGSize = .zero
+    @State private var moved = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private var fill: Color {
         if dragging { return .white }
@@ -174,7 +170,7 @@ private struct ClickPad: View {
         return Color(white: pressing ? 0.28 : 0.16)
     }
 
-    private var symbol: String { dragging ? "hand.raised.fill" : paused ? "pause.fill" : "cursorarrow.click" }
+    private var symbol: String { dragging ? "hand.raised.fill" : paused ? "pause.fill" : "hand.draw" }
 
     var body: some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -191,29 +187,54 @@ private struct ClickPad: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard !pressing else { return }
-                        pressing = true
-                        touchDown = ProcessInfo.processInfo.systemUptime // same clock as the motion samples
-                        holdTimer = Timer.scheduledTimer(withTimeInterval: holdToDrag, repeats: false) { _ in
-                            dragging = true
-                            pointer.send(.drag, 1, at: touchDown)
+                    .onChanged { value in
+                        guard !paused else { return }
+                        if !pressing {
+                            pressing = true
+                            moved = false
+                            lastTranslation = .zero
+                            holdTimer = Timer.scheduledTimer(withTimeInterval: holdToDrag, repeats: false) { _ in
+                                guard pressing, !moved, !paused else { return }
+                                dragging = true
+                                pointer.send(.drag, 1)
+                            }
+                        }
+                        let translation = value.translation
+                        if !moved && hypot(translation.width, translation.height) > 3 {
+                            moved = true
+                            holdTimer?.invalidate()
+                        }
+                        if moved || dragging {
+                            pointer.move(dx: Double(translation.width - lastTranslation.width),
+                                         dy: Double(translation.height - lastTranslation.height))
+                            lastTranslation = translation
                         }
                     }
                     .onEnded { _ in
-                        holdTimer?.invalidate()
-                        pressing = false
-                        if dragging {
-                            dragging = false
-                            pointer.send(.drag, 0, at: ProcessInfo.processInfo.systemUptime - 0.05) // just before the lift
-                        } else {
+                        if pressing && !paused && !dragging && !moved {
                             clicks += 1
-                            pointer.send(.leftClick, at: touchDown)
+                            pointer.send(.leftClick)
                         }
+                        cancelTouch()
                     }
             )
+            .onDisappear { cancelTouch() }
+            .onChange(of: paused) { cancelTouch() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { cancelTouch() }
+            }
             .sensoryFeedback(trigger: dragging) { _, now in .impact(weight: now ? .heavy : .light) }
     }
+    private func cancelTouch() {
+        holdTimer?.invalidate()
+        holdTimer = nil
+        if dragging { pointer.send(.drag, 0) }
+        dragging = false
+        pressing = false
+        moved = false
+        lastTranslation = .zero
+    }
+
 }
 
 private struct PadButton: View {

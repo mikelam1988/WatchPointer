@@ -34,7 +34,7 @@ let fallbackRewind = 0.1
 /// `.info`: [kind, JSON] describing the watch (see WatchInfo), not the fixed 5 bytes.
 /// `.drag`: a = 1 grab (mouse down), 0 drop (mouse up).
 /// Clicks and drags may add the same UInt16 ms time as `.aim`: when the thumb touched down (or lifted, for a drop).
-enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7 }
+enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, heartbeat = 9 }
 
 /// 1€ filter (Casiez et al. 2012): heavy smoothing when the hand is nearly still (no jitter),
 /// almost none when it moves fast (no lag). The standard choice for pointing devices.
@@ -84,6 +84,8 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
     private var frameTimer: DispatchSourceTimer?
     private var history: [(time: Double, point: CGPoint)] = [] // where the cursor was, last ~1 s
     private var dragging = false
+    private var touchMode = false
+    private var lastTouchPacket = 0.0
 
     init(live: Live) {
         self.live = live
@@ -162,8 +164,24 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         guard d.count >= 5, let kind = Kind(rawValue: d[0]) else { return }
         let a = Int16(bitPattern: UInt16(d[1]) | UInt16(d[2]) << 8)
         let b = Int16(bitPattern: UInt16(d[3]) | UInt16(d[4]) << 8)
+        if kind == .heartbeat || kind == .move {
+            touchMode = true
+            target = nil
+            history.removeAll()
+            lastTouchPacket = ProcessInfo.processInfo.systemUptime
+            if phase == .waiting || phase == .idle { setPhase(.live) }
+        }
         switch kind {
+        case .heartbeat: break
+        case .move:
+            guard phase != .paused else { return }
+            let current = CGEvent(source: nil)?.location ?? .zero
+            let p = Displays.clamp(CGPoint(x: current.x + Double(a) / 16 * 3 * speed,
+                                          y: current.y + Double(b) / 16 * 3 * speed))
+            shown = p
+            post(dragging ? .leftMouseDragged : .mouseMoved, p)
         case .aim:
+            touchMode = false
             let ms = d.count >= 7 ? UInt16(d[5]) | UInt16(d[6]) << 8 : nil
             aim(left: Double(a) / 100, up: Double(b) / 100, watchMs: ms)
         case .leftClick: log("click"); ui { $0.clicks += 1 }; click(.left, at: when(d))
@@ -246,6 +264,13 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
             let rate = rate
             ui { $0.rate = rate }
         }
+        if touchMode {
+            if now - lastTouchPacket > 2 {
+                drop()
+                if phase == .live { setPhase(.idle) }
+            }
+            return
+        }
         guard let target else { return }
         guard now - lastSample < 0.3 else { // watch idle: leave the trackpad alone
             drop() // never leave the button held down if the watch goes quiet mid-drag
@@ -298,7 +323,7 @@ final class Receiver: NSObject, CBPeripheralManagerDelegate {
         let current = CGEvent(source: nil)?.location ?? .zero
         let now = ProcessInfo.processInfo.systemUptime
         let moment = time ?? now - fallbackRewind
-        guard phase == .live, now - lastSample < 0.3,
+        guard !touchMode, phase == .live, now - lastSample < 0.3,
               let before = history.last(where: { $0.time <= moment }) ?? history.first else { return current }
         shown = before.point
         return before.point

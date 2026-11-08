@@ -1,5 +1,4 @@
 import CoreBluetooth
-import CoreMotion
 import SwiftUI
 import WatchKit
 
@@ -22,9 +21,9 @@ struct WatchPointerApp: App {
 /// `.info`: [kind, JSON] with the watch's model id, watchOS, battery and name (not the fixed 5 bytes).
 /// `.drag`: a = 1 grab (mouse down), 0 drop (mouse up).
 /// Clicks and drags may add the same UInt16 ms time as `.aim`: when the thumb touched down (or lifted, for a drop).
-enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7 }
+enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, center = 4, pause = 5, info = 6, drag = 7, move = 8, heartbeat = 9 }
 
-/// How long you hold the screen before it grabs. The Mac uses the same number to undo the press's jolt.
+/// How long to hold still before beginning a touch drag.
 let holdToDrag = 0.35
 
 /// A Mac running the receiver, seen nearby.
@@ -47,39 +46,28 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     private var mac: CBPeripheral?
     private var input: CBCharacteristic?
     private var output: CBCharacteristic?
-    private let motion = CMMotionManager()
-
-    private var heading = 0.0       // radians turned left since "Center"
-    private var elevation = 0.0     // radians the top edge points above horizontal, right now
-    private var elevationZero = 0.0 // elevation when "Center" was pressed
-    private var lastTimestamp: TimeInterval?
     private var infoTimer: Timer?
     private var pendingScroll = 0.0 // Crown turn not sent yet, in pixels
 
     override init() {
         super.init()
         central = CBCentralManager(delegate: self, queue: .main)
-        startMotion()
+
     }
 
-    /// Whatever direction the watch points now becomes the middle of the screen.
-    func center() {
-        recenter()
-        send(.center)
-    }
-
-    /// Paused: the cursor stays put (aim keeps tracking, so resuming lines up again).
     func togglePause() {
         paused.toggle()
         send(.pause, paused ? 1 : 0)
     }
 
-    private func recenter() {
-        heading = 0
-        elevationZero = elevation
+    /// Relative movement in sixteenths of a screen point.
+    func move(dx: Double, dy: Double) {
+        guard !paused else { return }
+        send(.move, Int16(clamping: Int((dx * 16).rounded())),
+             Int16(clamping: Int((dy * 16).rounded())))
     }
 
-    /// Tells the Mac which watch this is. Sent on connect, then every minute for the battery level.
+    /// Tells the Mac which watch this is when connecting.
     private func sendInfo() {
         guard let mac, let input else { return }
         var system = utsname()
@@ -98,65 +86,18 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
         mac.writeValue(Data([Kind.info.rawValue]) + json, for: input, type: .withResponse)
     }
 
-    // MARK: Motion → aim
-
-    private func startMotion() {
-        guard motion.isDeviceMotionAvailable else { return }
-        motion.deviceMotionUpdateInterval = 1.0 / 100
-
-        motion.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
-            guard let self, let data else { return }
-            let dt = lastTimestamp.map { min(data.timestamp - $0, 0.05) } ?? 0
-            lastTimestamp = data.timestamp
-
-            let g = data.gravity, r = data.rotationRate
-            let n = max((g.x * g.x + g.y * g.y + g.z * g.z).squareRoot(), 1e-6)
-            let up = (x: -g.x / n, y: -g.y / n, z: -g.z / n)
-            // Up/down comes straight from gravity, so it never drifts.
-            elevation = asin(min(max(up.y, -1), 1))
-            // Left/right has no absolute reference, so add up every turn around the vertical axis.
-            // No dead zone: dropping slow turns is what made the old version slide out of line.
-            heading += (r.x * up.x + r.y * up.y + r.z * up.z) * dt
-
-            guard connected else { return }
-            flushScroll()
-            guard !paused else { return }
-            sendAim(at: data.timestamp)
-        }
-    }
-
-    private func sendAim(at timestamp: TimeInterval) {
-        guard let mac, let input, mac.canSendWriteWithoutResponse else { return } // link busy: the next sample replaces this one
-        let left = Int16(clamping: Int((remainder(heading, 2 * .pi) * 180 / .pi * 100).rounded()))
-        let upward = Int16(clamping: Int(((elevation - elevationZero) * 180 / .pi * 100).rounded()))
-        let ms = UInt16(truncatingIfNeeded: Int64(timestamp * 1000))
-        let bytes = [Kind.aim.rawValue,
-                     UInt8(truncatingIfNeeded: left), UInt8(truncatingIfNeeded: left >> 8),
-                     UInt8(truncatingIfNeeded: upward), UInt8(truncatingIfNeeded: upward >> 8),
-                     UInt8(truncatingIfNeeded: ms), UInt8(truncatingIfNeeded: ms >> 8)]
-        mac.writeValue(Data(bytes), for: input, type: .withoutResponse)
-    }
-
-    /// `at`: when it happened on the watch's clock (same clock as the motion samples). Clicks and drags send the
-    /// moment the thumb touched down, so the Mac clicks where you were pointing then, before the tap jolted the watch.
-    /// Each Crown event is a tiny fraction; keep the leftovers so slow turns still add up to scrolling.
     func scroll(by pixels: Double) {
+        guard !paused else { return }
         pendingScroll += pixels
-        flushScroll()
-    }
-
-    /// Sent on the fast lane like aim samples, so scrolling never queues behind clicks. If the link is busy,
-    /// the amount waits and goes with the next one (the motion loop retries 100 times a second).
-    private func flushScroll() {
         let whole = Int16(clamping: Int(pendingScroll))
-        guard whole != 0, let mac, let input, mac.canSendWriteWithoutResponse else { return }
+        guard whole != 0 else { return }
         pendingScroll -= Double(whole)
-        let bytes = [Kind.scroll.rawValue, UInt8(truncatingIfNeeded: whole), UInt8(truncatingIfNeeded: whole >> 8), 0, 0]
-        mac.writeValue(Data(bytes), for: input, type: .withoutResponse)
+        send(.scroll, whole)
     }
 
     func send(_ kind: Kind, _ a: Int16 = 0, _ b: Int16 = 0, at time: TimeInterval? = nil) {
         guard let mac, let input else { return }
+        if paused && kind != .pause && kind != .heartbeat && kind != .drag { return }
         var bytes = [kind.rawValue,
                      UInt8(truncatingIfNeeded: a), UInt8(truncatingIfNeeded: a >> 8),
                      UInt8(truncatingIfNeeded: b), UInt8(truncatingIfNeeded: b >> 8)]
@@ -245,10 +186,10 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
         output = service.characteristics?.first { $0.uuid == outputUUID }
         if let output { peripheral.setNotifyValue(true, for: output) }
         connected = input != nil
-        recenter()
+        send(.heartbeat)
         sendInfo()
         infoTimer?.invalidate()
-        infoTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.sendInfo() }
+        infoTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.send(.heartbeat) }
     }
 
     private func reset() {

@@ -2,22 +2,17 @@
 
 <img src="docs/icon.png" width="96" align="right" alt="">
 
-Use your Apple Watch as a pointer for your Mac. Point it at the screen to move the cursor, tap to click, hold to drag.
+Use your Apple Watch as a Bluetooth trackpad for your Mac.
 
-No Wi-Fi, no servers: the watch talks straight to the Mac over Bluetooth.
-
-<p align="center">
-  <img src="docs/demo.gif" width="320" alt="Holding an Apple Watch like a remote and pointing it at a MacBook to move the cursor">
-</p>
+This branch replaces motion aiming with touch input. Both the Mac receiver and embedded Watch app must be updated.
 
 ## What it does
 
-- **Point** like a laser pointer: the cursor goes where the top edge of the watch points. Works across all your displays.
-- **Tap** the pad to click, **hold** to drag, **right-click** button, **Digital Crown** to scroll.
-- **Center** re-aims the middle of the screen; **Pause** frees the cursor for your trackpad.
-- **Pair** with a Mac once; the watch only connects to that Mac until you unpair it.
-- **Notch panel** on the Mac: connection state, the watch's name and model, battery, live aim, and a pin to keep it open.
-- **Sky Shot**, a small light-gun style game to try it on.
+- **Swipe** the large touch area to move the cursor relatively. Lift and reposition your finger to continue moving.
+- **Tap** to click. **Hold still for 0.35 seconds, then swipe** to drag; lift to release.
+- Use the **right-click** button or **Digital Crown** to scroll.
+- **Pause** disables touch input. No wrist motion or Center calibration is needed.
+- Pair once with your Mac over Bluetooth. No Wi-Fi or iPhone relay is needed during use.
 
 ## Requirements
 
@@ -50,9 +45,9 @@ The iPhone app contains setup instructions; it does not relay pointer data. The 
 
 Bundle identifiers: iPhone `io.loopbreak.watchpointer`, embedded Watch app `io.loopbreak.watchpointer.watchkitapp`. The Watch bundle identifier differs from the original standalone build, so an existing standalone installation does not share its saved pairing with this version.
 
-### 3. Point
+### 3. Use the trackpad
 
-Hold the watch like a remote with the top edge (12 o'clock) toward the screen. Point at the middle of the screen and tap **Center** to line it up.
+Swipe on the large pad to move the cursor, tap to click, or hold still until the haptic feedback and then slide to drag. Lift to release. The default gain is 3 Mac screen points per Watch touch point; the Mac `speed` argument scales it.
 
 ## Settings
 
@@ -74,9 +69,11 @@ On the iPhone's Watch app, turn off **Passcode › Wrist Detection**, or the wat
 
 ## How it works
 
-- **Watch** (`Watch/`): reads gravity and the gyroscope 100 times a second. Up/down comes from gravity, so it never drifts; left/right adds up turns around the vertical. Each sample is sent with the watch's timestamp.
-- **Mac** (`Mac/`): projects the aim onto the screen like a laser hitting a wall, smooths it with a [1€ filter](https://gery.casiez.net/1euro/) using the watch's timestamps, and moves the cursor 240 times a second on its own thread. Clicks land where you were pointing the moment your thumb touched the watch, so the tap's jolt doesn't move them.
-- **Bluetooth**: the Mac advertises a service; the watch connects and writes small packets (aim, click, drag, scroll, pause, info). The protocol is documented at the top of `Mac/Sources/WatchPointer/Receiver.swift`.
+- The Watch sends relative touch deltas using packet kind 8: `[kind, Int16 LE dx, Int16 LE dy]`, in sixteenths of a touch point. Positive x is right, positive y is down.
+- The Mac applies these deltas to the current cursor position. It retains legacy aim support for older Watch builds.
+- Kind 9 is a heartbeat every 0.5 seconds. The Mac releases a held mouse button after two seconds without a heartbeat or movement, and on Bluetooth disconnect.
+- Click, drag, scroll, pause and info packets retain their existing kinds. Touch input uses writes with response to preserve relative deltas and ordering.
+- CoreMotion is not used by the Watch app on this branch.
 
 ## Security note
 

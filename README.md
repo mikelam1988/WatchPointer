@@ -4,7 +4,7 @@
 
 Use your Apple Watch as a Bluetooth trackpad for your Mac.
 
-This branch replaces motion aiming with touch input. Both the Mac receiver and embedded Watch app must be updated.
+This branch replaces motion aiming with touch input. Both the Mac receiver and Watch app must be updated.
 
 ## What it does
 
@@ -33,17 +33,14 @@ The first time, macOS asks for **Bluetooth** access and for **Accessibility** ac
 
 It shows up in the notch (or the middle of the menu bar on Macs without one).
 
-### 2. iPhone companion and Watch app
+### 2. Standalone Watch app
 
-1. Open `Watch/WatchPointer.xcodeproj` in Xcode and select the **WatchPointerPhone** scheme.
-2. Select your connected physical iPhone as the run destination. Both targets use automatic signing; choose your own team for both when building on another account.
-3. Press **⌘R** to install the iPhone app, which embeds the Watch app.
-4. On the iPhone, open Apple's **Watch** app → **My Watch** → **Available Apps** → **WatchPointer** → **Install** (unless already installed automatically).
-5. Open WatchPointer on the watch and tap **Pair** next to your Mac.
+1. Open `Watch/WatchPointer.xcodeproj` in Xcode and select the **WatchPointer** scheme.
+2. Select your connected physical Apple Watch as the run destination and use your signing team.
+3. Press **⌘R** to build and install directly on the Watch. Confirm device trust / Developer Mode prompts if requested.
+4. Open WatchPointer on the Watch and pair with your Mac.
 
-The iPhone app contains setup instructions; it does not relay pointer data. The Watch app still talks directly to the Mac over Bluetooth. Installation requires a properly paired and connected iPhone/Watch and any developer-mode/trust confirmations requested by the devices.
-
-Bundle identifiers: iPhone `io.loopbreak.watchpointer`, embedded Watch app `io.loopbreak.watchpointer.watchkitapp`. The Watch bundle identifier differs from the original standalone build, so an existing standalone installation does not share its saved pairing with this version.
+No iOS companion app is needed. The Watch target is watch-only (`WKWatchOnly = YES`) and retains `io.loopbreak.watchpointer.watchkitapp` so an in-place update can preserve existing pairing data. The original standalone identifier was different. This change removes the iOS target, not the trackpad features or Mac receiver.
 
 ### 3. Use the trackpad
 
